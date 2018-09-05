@@ -4,7 +4,7 @@ import argparse, os, subprocess, sys, textwrap
 import cibuildwheel
 import cibuildwheel.linux, cibuildwheel.windows, cibuildwheel.macos
 from cibuildwheel.environment import parse_environment, EnvironmentParseError
-from cibuildwheel.util import BuildSkipper
+from cibuildwheel.util import BuildSkipper, Unbuffered
 
 def get_option_from_environment(option_name, platform=None, default=None):
     '''
@@ -53,6 +53,8 @@ def main():
     if args.platform != 'auto':
         platform = args.platform
     else:
+        platform = None
+
         if os.environ.get('TRAVIS_OS_NAME') == 'linux':
             platform = 'linux'
         elif os.environ.get('TRAVIS_OS_NAME') == 'osx':
@@ -61,9 +63,15 @@ def main():
             platform = 'windows'
         elif 'BITRISE_BUILD_NUMBER' in os.environ:
             platform = 'macos'
-        else:
+        elif os.environ.get('CIRCLECI'):
+            if sys.platform.startswith('linux'):
+                platform = 'linux'
+            elif sys.platform.startswith('darwin'):
+                platform = 'macos'
+
+        if platform is None:
             print('cibuildwheel: Unable to detect platform. cibuildwheel should run on your CI server, '
-                  'Travis CI and Appveyor are supported. You can run on your development '
+                  'Travis CI, Appveyor, and CircleCI are supported. You can run on your development '
                   'machine using the --platform argument. Check --help output for more '
                   'information.',
                   file=sys.stderr)
@@ -141,6 +149,9 @@ def main():
         pass
     elif platform == 'windows':
         pass
+
+    # Python is buffering by default when running on the CI platforms, giving problems interleaving subprocess call output with unflushed calls to 'print'
+    sys.stdout = Unbuffered(sys.stdout)
 
     print_preamble(platform, build_options)
 
