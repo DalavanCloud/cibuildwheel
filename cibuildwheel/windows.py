@@ -11,17 +11,11 @@ from .util import prepare_command, get_build_verbosity_extra_flags
 
 
 def build(project_dir, package_name, output_dir, test_command, test_requires, before_build, build_verbosity, skip, environment):
-    # run_with_env is a cmd file that sets the right environment variables to
-    run_with_env = os.path.join(tempfile.gettempdir(), 'appveyor_run_with_env.cmd')
-    if not os.path.exists(run_with_env):
-        with open(run_with_env, 'wb') as f:
-            request = urlopen('https://github.com/ogrisel/python-appveyor-demo/raw/09a1c8672e5015a74d8f69d07add6ee803c176ec/appveyor/run_with_env.cmd')
-            f.write(request.read())
 
     def shell(args, env=None, cwd=None):
         # print the command executing for the logs
         print('+ ' + ' '.join(args))
-        args = ['cmd', '/E:ON', '/V:ON', '/C', run_with_env] + args
+        args = ['cmd', '/E:ON', '/V:ON', '/C'] + args
         return subprocess.check_call(' '.join(args), env=env, cwd=cwd)
 
     PythonConfiguration = namedtuple('PythonConfiguration', ['version', 'arch', 'identifier', 'path'])
@@ -48,7 +42,7 @@ def build(project_dir, package_name, output_dir, test_command, test_requires, be
         if skip(config.identifier):
             print('cibuildwheel: Skipping build %s' % config.identifier, file=sys.stderr)
             continue
-        
+
         # check python & pip exist for this configuration
         assert os.path.exists(os.path.join(config.path, 'python.exe'))
         assert os.path.exists(os.path.join(config.path, 'Scripts', 'pip.exe'))
@@ -59,6 +53,17 @@ def build(project_dir, package_name, output_dir, test_command, test_requires, be
         os.makedirs(built_wheel_dir)
 
         env = os.environ.copy()
+
+        # enable the Visual C++ toolset for the command-line builds
+        # https://www.appveyor.com/docs/lang/cpp/#visual-studio-2017
+        # and set the 'Platform' value (which will be picked up by the 'build.cmd' files)
+        if config.arch == '32':
+            shell(['call', '"C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Community\\VC\\Auxiliary\\Build\\vcvars32.bat"'])
+            env['Platform'] = 'x86'
+        else:
+            shell(['call', '"C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"'])
+            env['Platform'] = 'x64'
+
         # set up environment variables for run_with_env
         env['PYTHON_VERSION'] = config.version
         env['PYTHON_ARCH'] = config.arch
